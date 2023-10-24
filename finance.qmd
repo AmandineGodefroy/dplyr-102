@@ -11,6 +11,7 @@ here::i_am("dplyr-102.Rproj")
 library(here)
 library(vroom) ## or readr
 library(tidyr)
+library(dplyr)
 library(ggplot2)
 ```
 
@@ -20,6 +21,76 @@ library(ggplot2)
 clients <- vroom(here("data", "client.csv"))
 accounts <- vroom(here("data", "account.csv"))
 disp <- vroom(here("data", "disp.csv"))
+```
 
+## Joining data tables
+A collection of joining functions of the form "_join".
+
+### Inner join (a natural join)
+Merge deux databases avec un même identifiant (pour même valeurs communes, all the a values of the first dataset combines with the b values from the other dataset). In the new dataset all the values appears only once. 
+```{r}
+da <- inner_join(accounts, disp)
+```
+On joint à cette nvelle base la base clients en précisant par quel id merger ces deux bases pour s'assurer du bon appariement (puisque les deux "district_id" diffèrent entres les bases)--> "join_by".
+
+"suffix" permet de différencier les variables provenant des deux bases (home pour clients et bank pour da).
+
+```{r}
+cda <- inner_join(clients, da, by=join_by(client_id),suffix=c("_home","_bank"))
+```
+
+### home district versus bank district
+vérification des données qui diffèrent (exclues si pas de "join_by")
+!= means different
+```{r}
+cda |> filter(district_id_home != district_id_bank)
+```
+```{r}
+home_diff_bank <- cda |>
+  filter(district_id_home != district_id_bank) |>
+  nrow()
+```
+We observe taht `r home_diff_bank` clients have a bank in another district as the one they live in.
+
+We will now compare by row the persons.
+How many diff districts are attached to all the groups ?
+```{r}
+cda |>
+  group_by(account_id) |>
+  distinct(district_id_home) |>
+  summarize(N = n()) |>
+  filter(N > 1)
+```
+### Gender gap ?
+
+```{r}
+clients |>
+  count(gender)
+```
+Graphique en bar vertical
+```{r}
+clients |> ggplot(aes(x=gender)) + geom_bar()
+```
+Graphique en bar horizontal
+```{r}
+clients |> ggplot(aes(x=gender)) + geom_bar() + coord_flip()
+```
+```{r}
+cda |>
+  count(gender, type) |>
+  group_by(gender) |>
+  mutate(freq = n / sum(n)) |>
+  select(-n) |>
+  pivot_wider(values_from = freq, names_from = type)
+```
+display graphically on the way it account
+```{r}
+cda |> ggplot(aes(y = gender, fill = type)) +
+  geom_bar(position = "fill")
+```
+we see a strong dependancy
+we can alsp do a chi2 test
+```{r}
+chisq.test(cda |> pull(gender), cda |> pull(type))
 ```
 
