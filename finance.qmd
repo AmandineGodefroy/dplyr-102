@@ -13,6 +13,7 @@ library(vroom) ## or readr
 library(tidyr)
 library(dplyr)
 library(ggplot2)
+library(patchwork)
 ```
 
 ## Data loading
@@ -89,8 +90,108 @@ cda |> ggplot(aes(y = gender, fill = type)) +
   geom_bar(position = "fill")
 ```
 we see a strong dependancy
-we can alsp do a chi2 test
+we can also do a chi2 test
+In the dataset we do not see a strong effect of sex on the type of account.
 ```{r}
 chisq.test(cda |> pull(gender), cda |> pull(type))
+```
+we cannot reject the hypothesis
+
+## Loan analysis
+
+```{r}
+#| message: false
+loan <- vroom(here("data","loan.csv"))
+```
+
+```{r}
+loan <- loan |>
+  mutate(status = factor(status, levels=c("A","B","C","D")),
+         account_id = as.integer(account_id),
+         loan_id = as.integer(loan_id))
+```
+avant status était perçu comme caractère et maintenant comme facteur.
+
+Factor recoding of `status` introduced `r loan |> filter(is.na(status)) |> nrow() ` error(s).
+
+
+```{r}
+# distribution of discrete variable -> bar graph
+loan_counts <- ggplot(loan, aes(x=status)) + geom_bar()
+
+print(loan_counts)
+```
+
+```{r}
+# computate an aggregate based on the status of the loan
+loan |>
+  group_by(status) |>
+  summarise(sum(amount))
+```
+Rep graph : amount condition on the status
+```{r}
+ggplot(loan, aes(x = status, y = amount)) +
+  geom_boxplot()
+```
+defaults are associated to big loans but are they any causal factors?
+
+Representation graph of the table above
+```{r}
+# compute what we want to display + use of graphical primitives
+
+loan_amounts <- loan |> 
+  group_by(status) |>
+  summarise("total amount" = sum(amount)) |>
+  ggplot(aes(x=status, y=`total amount`)) +
+  geom_col()
+```
+
+To put the two graph representation side by side -> use of the patchwork package
+```{r}
+loan_counts + loan_amounts
+```
+graphiques à l'horizontal
+```{r}
+(loan_counts + coord_flip()) / (loan_amounts + coord_flip())
+```
+
+```{r}
+(loan |> 
+  filter(status %in% c("A","B")) |>
+  ggplot(aes(x=status)) + geom_bar()) + # + from patchwork
+(loan |>
+  filter(status %in% c("C","D")) |>
+  ggplot(aes(x=status)) + geom_bar())
+```
+```{r}
+# current loans vs past loans -> mutate to create a new column
+
+loan <- loan |> 
+  mutate(active = if_else(status %in% c("A","B"), "Past", "Active"))
+```
+
+```{r}
+ggplot(loan, aes(x = status)) +
+  geom_bar() +
+  facet_wrap(~active)
+```
+we want the wcale dependant on the facet (here there are empty colums)
+```{r}
+ggplot(loan, aes(x = status)) +
+  geom_bar() +
+  facet_wrap(~active, scale = "free")
+```
+```{r}
+loan |> ggplot(aes(y=active, fill=status))+geom_bar(position = "fill")
+
+# postition = "fill" to have conditional distribution
+```
+```{r}
+loan <- loan |>
+  mutate(default = status %in% c("B","D"))
+```
+```{r}
+ggplot(loan, aes(y=active, fill=default))+geom_bar(position = "fill")
+
 ```
 
