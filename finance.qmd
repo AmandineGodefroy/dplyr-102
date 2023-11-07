@@ -194,4 +194,100 @@ loan <- loan |>
 ggplot(loan, aes(y=active, fill=default))+geom_bar(position = "fill")
 
 ```
+### Combined analysis
+```{r}
+loan_cda <- loan |> inner_join(cda, by = join_by(account_id), suffix = c("_loan", "_account"))
+```
+
+```{r}
+loan_cda |>
+  group_by(loan_id) |>
+  mutate(nb_clients = n()) |>
+  slice_head() |>
+  select (-client_id, -gender, -birth_date) |>
+  ungroup() |>
+  ggplot(aes(y=nb_clients, fill=default))+
+  geom_bar()
+```
+```{r}
+# here we keep clients who do not have a loan
+clients_without_loan <- cda |> 
+  anti_join(loan, by = join_by(account_id))
+
+clients_with_loan <- cda |> 
+  semi_join(loan, by = join_by(account_id))
+```
+
+```{r}
+(clients_without_loan |>
+  group_by(account_id) |>
+  summarise(nb_clients = n()) |>
+  ggplot(aes(y = nb_clients)) +
+  geom_bar() + ggtitle("Clients without loan")) /
+  (clients_with_loan |>
+    group_by(account_id) |>
+    summarise(nb_clients = n()) |>
+    ggplot(aes(y = nb_clients)) +
+    geom_bar() + ggtitle("Clients with loan"))
+```
+
+```{r}
+merged_clients <-
+  bind_rows(
+    with = clients_with_loan,
+    without = clients_without_loan,
+    .id = "loan"
+  )
+
+# we add a new column "loan" containing "with" and "without" 
+```
+
+```{r}
+merged_clients |>
+  group_by(account_id) |>
+  mutate(nb_clients = n()) |>
+  slice_head() |>
+  ungroup() |>
+  ggplot(aes(y=nb_clients, fill = loan)) +
+  geom_bar(position = "fill")
+```
+```{r}
+accounts_loan <- merged_clients |>
+  group_by(account_id) |>
+  mutate(nb_clients = n()) |>
+  slice_head() |>
+  ungroup()
+
+chisq.test(accounts_loan |> pull(loan),
+         accounts_loan |> pull(nb_clients)) ## |> as.factor()
+  
+```
+
+### Alternative solutions
+```{r}
+# rather than group_by + summarise
+persons_per_account <- cda |> 
+  count(account_id)
+loan |> inner_join(persons_per_account, by = join_by(account_id))
+```
+```{r}
+loan_cda |>
+  group_by(default, loan_id) |>
+  summarize(n=n(), .groups="drop")
+# putting default in group_by is useless for grouping but that way we can have it in the result data frame
+# .group = "drop" is to suppressed the column groups created by default when using group_by
+```
+```{r}
+# rather than the anti_join and semi_join uses
+# using outer_join, even if the two tables do not have a match, keep all the data including NA ones
+
+cda |> left_join(loan, by=join_by(account_id))
+```
+```{r}
+cda |>
+  left_join(loan |> select(account_id, default), by = join_by(account_id)) |>
+  mutate(loan = if_else(is.na(default), "with", "without"))
+```
+
+
 
